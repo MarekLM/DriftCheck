@@ -1,0 +1,37 @@
+# DriftCheck compose file.
+#
+# LOCAL UI (recommended for interactive use):
+#   docker compose up --build driftcheck-ui
+#   open http://localhost:8080
+#
+# CLI (headless, for scripting / CI):
+#   docker compose run --rm driftcheck run
+#   docker compose run --rm driftcheck run --test capital-of-france --all
+
+services:
+
+  driftcheck-ui:
+    build: .
+    image: driftcheck:latest
+    container_name: driftcheck-ui
+    entrypoint: ["python", "-m", "src.web"]
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./settings:/app/settings:ro
+      - ./inputs:/app/inputs:ro
+      - ./outputs:/app/outputs
+    env_file:
+      - .env
+    restart: unless-stopped
+
+  driftcheck:
+    build: .
+    image: driftcheck:latest
+    volumes:
+      - ./settings:/app/settings:ro
+      - ./inputs:/app/inputs:ro
+      - ./outputs:/app/outputs
+    env_file:
+      - .env
+    profiles: ["cli"]

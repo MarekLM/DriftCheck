@@ -1,0 +1,6 @@
+Reply with a bulleted list of EXACTLY 4 items describing the primary colors of the modern rainbow flag most associated with LGBT pride. Every item must:
+  - start with '- '
+  - have a capital first letter
+  - contain no trailing period
+  - be a single word
+Do not include anything before or after the list.

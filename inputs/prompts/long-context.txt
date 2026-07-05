@@ -1,0 +1,33 @@
+Read the passage carefully, then answer the final question with a single word.
+
+=== PASSAGE ===
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Maecenas venenatis, quam vitae vulputate feugiat, orci purus consectetur ex, at porta velit lorem at massa. Praesent malesuada mi at diam luctus, non facilisis leo tincidunt. Cras placerat nisi eget lectus dictum, ac pellentesque metus efficitur. Fusce aliquam risus vitae ligula tempus, at bibendum urna varius. Curabitur consequat, orci sit amet consectetur venenatis, mauris nulla porta velit, in condimentum sapien turpis vel eros. Nullam vitae dui at nunc feugiat pretium.
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Maecenas venenatis, quam vitae vulputate feugiat, orci purus consectetur ex, at porta velit lorem at massa. Praesent malesuada mi at diam luctus, non facilisis leo tincidunt. Cras placerat nisi eget lectus dictum, ac pellentesque metus efficitur. Fusce aliquam risus vitae ligula tempus, at bibendum urna varius. Curabitur consequat, orci sit amet consectetur venenatis, mauris nulla porta velit, in condimentum sapien turpis vel eros. Nullam vitae dui at nunc feugiat pretium.
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Maecenas venenatis, quam vitae vulputate feugiat, orci purus consectetur ex, at porta velit lorem at massa. Praesent malesuada mi at diam luctus, non facilisis leo tincidunt. Cras placerat nisi eget lectus dictum, ac pellentesque metus efficitur. Fusce aliquam risus vitae ligula tempus, at bibendum urna varius. Curabitur consequat, orci sit amet consectetur venenatis, mauris nulla porta velit, in condimentum sapien turpis vel eros. Nullam vitae dui at nunc feugiat pretium.
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Maecenas venenatis, quam vitae vulputate feugiat, orci purus consectetur ex, at porta velit lorem at massa. Praesent malesuada mi at diam luctus, non facilisis leo tincidunt. Cras placerat nisi eget lectus dictum, ac pellentesque metus efficitur. Fusce aliquam risus vitae ligula tempus, at bibendum urna varius. Curabitur consequat, orci sit amet consectetur venenatis, mauris nulla porta velit, in condimentum sapien turpis vel eros. Nullam vitae dui at nunc feugiat pretium.
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Maecenas venenatis, quam vitae vulputate feugiat, orci purus consectetur ex, at porta velit lorem at massa. Praesent malesuada mi at diam luctus, non facilisis leo tincidunt. Cras placerat nisi eget lectus dictum, ac pellentesque metus efficitur. Fusce aliquam risus vitae ligula tempus, at bibendum urna varius. Curabitur consequat, orci sit amet consectetur venenatis, mauris nulla porta velit, in condimentum sapien turpis vel eros. Nullam vitae dui at nunc feugiat pretium.
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Maecenas venenatis, quam vitae vulputate feugiat, orci purus consectetur ex, at porta velit lorem at massa. Praesent malesuada mi at diam luctus, non facilisis leo tincidunt. Cras placerat nisi eget lectus dictum, ac pellentesque metus efficitur. Fusce aliquam risus vitae ligula tempus, at bibendum urna varius. Curabitur consequat, orci sit amet consectetur venenatis, mauris nulla porta velit, in condimentum sapien turpis vel eros. Nullam vitae dui at nunc feugiat pretium.
+
+The secret access code embedded in this passage is BLUEFOX42. Remember it exactly.
+
+Duis vitae tortor at augue lacinia efficitur. Aenean vitae mi non nulla varius malesuada. Etiam ultrices ligula ac purus vulputate, in consequat leo hendrerit. Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore. Vestibulum ante ipsum primis in faucibus orci luctus et ultrices posuere cubilia.
+
+Duis vitae tortor at augue lacinia efficitur. Aenean vitae mi non nulla varius malesuada. Etiam ultrices ligula ac purus vulputate, in consequat leo hendrerit. Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore. Vestibulum ante ipsum primis in faucibus orci luctus et ultrices posuere cubilia.
+
+Duis vitae tortor at augue lacinia efficitur. Aenean vitae mi non nulla varius malesuada. Etiam ultrices ligula ac purus vulputate, in consequat leo hendrerit. Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore. Vestibulum ante ipsum primis in faucibus orci luctus et ultrices posuere cubilia.
+
+Duis vitae tortor at augue lacinia efficitur. Aenean vitae mi non nulla varius malesuada. Etiam ultrices ligula ac purus vulputate, in consequat leo hendrerit. Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore. Vestibulum ante ipsum primis in faucibus orci luctus et ultrices posuere cubilia.
+
+Duis vitae tortor at augue lacinia efficitur. Aenean vitae mi non nulla varius malesuada. Etiam ultrices ligula ac purus vulputate, in consequat leo hendrerit. Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore. Vestibulum ante ipsum primis in faucibus orci luctus et ultrices posuere cubilia.
+
+Duis vitae tortor at augue lacinia efficitur. Aenean vitae mi non nulla varius malesuada. Etiam ultrices ligula ac purus vulputate, in consequat leo hendrerit. Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore. Vestibulum ante ipsum primis in faucibus orci luctus et ultrices posuere cubilia.
+
+=== END PASSAGE ===
+
+Question: What is the secret access code mentioned in the passage? Answer with the code only, nothing else.

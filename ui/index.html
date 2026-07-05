@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>DriftCheck — LLM consistency &amp; drift testing</title>
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+
+<nav class="nav">
+  <div class="brand">
+    <span class="brand-mark">◈</span>
+    <span class="brand-name">DriftCheck</span>
+    <span class="brand-tag">local</span>
+  </div>
+  <div class="nav-status" id="status">Loading…</div>
+  <button class="theme-toggle" id="themeToggle" type="button" aria-label="Toggle theme">
+    <svg class="icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+    <svg class="icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+  </button>
+</nav>
+
+<main class="page">
+
+  <!-- ==================== RUN A TEST ==================== -->
+  <section class="card">
+    <header class="card-head">
+      <div>
+        <span class="eyebrow">Run</span>
+        <h2>Configure &amp; run a test</h2>
+      </div>
+    </header>
+
+    <div class="form-grid">
+      <div class="field field-full">
+        <div class="field-label">
+          Tests
+          <span class="model-actions">
+            <button type="button" class="link-btn" id="pickAllTests">select all</button>
+            <button type="button" class="link-btn" id="pickNoTests">none</button>
+            <span id="testCountBadge" class="dim" style="margin-left:auto;"></span>
+          </span>
+        </div>
+        <div id="testList" class="model-list test-list"><em class="dim">Loading tests…</em></div>
+      </div>
+
+      <label class="field">
+        <span class="field-label">Repeats</span>
+        <input id="repeatsInput" type="number" min="1" max="50" value="10" />
+      </label>
+
+      <label class="field">
+        <span class="field-label">Temperature</span>
+        <input id="temperatureInput" type="number" min="0" max="2" step="0.1" value="0.7" />
+        <span class="field-hint" id="tempHint" hidden></span>
+      </label>
+
+      <label class="field">
+        <span class="field-label">Filler turns <span class="opt">(drift)</span></span>
+        <input id="fillerInput" type="number" min="0" max="10" value="0" />
+      </label>
+
+      <label class="field field-full">
+        <span class="field-label">Prompt <span class="opt">(preview of the last-clicked test)</span></span>
+        <textarea id="promptPreview" rows="3" readonly></textarea>
+      </label>
+
+      <label class="field field-check">
+        <input id="assentationInput" type="checkbox" />
+        <span>Test <em>assentation</em> — push back after each answer and re-ask</span>
+      </label>
+
+      <div class="field field-full">
+        <div class="field-label">
+          Models
+          <span class="model-actions">
+            <button type="button" class="link-btn" id="pickAll">select all</button>
+            <button type="button" class="link-btn" id="pickNone">none</button>
+            <button type="button" class="link-btn" id="pickAnthropic">anthropic</button>
+            <button type="button" class="link-btn" id="pickOpenAI">openai</button>
+            <button type="button" class="link-btn" id="pickGoogle">google</button>
+          </span>
+        </div>
+        <div id="modelList" class="model-list"><em class="dim">Loading connections…</em></div>
+      </div>
+
+      <div class="field field-full form-actions">
+        <button class="btn btn-primary" id="runBtn">Run tests</button>
+        <span id="runNote" class="dim"></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== RESULTS ==================== -->
+  <section class="card" id="resultsCard" hidden>
+    <header class="card-head">
+      <div>
+        <span class="eyebrow">Results</span>
+        <h2 id="resultsTitle">—</h2>
+        <p class="dim" id="resultsSubtitle">—</p>
+      </div>
+      <button class="btn btn-ghost" id="downloadAll" type="button" title="Download raw JSON of the last run">Download JSON</button>
+    </header>
+    <div id="resultsBody"></div>
+  </section>
+
+  <!-- ==================== HISTORY ==================== -->
+  <section class="card">
+    <header class="card-head">
+      <div>
+        <span class="eyebrow">History</span>
+        <h2>Past runs</h2>
+        <p class="dim">Every result saved under <code>outputs/</code>. Click a row to reload it.</p>
+      </div>
+      <button class="btn btn-ghost" id="refreshHistory" type="button">Refresh</button>
+    </header>
+    <div class="history" id="historyList"><em class="dim">Loading…</em></div>
+  </section>
+
+</main>
+
+<script src="/app.js"></script>
+</body>
+</html>
