@@ -307,11 +307,6 @@ These files are intentionally ignored by git. Keep them locally, attach them to 
 
 ---
 
-## GitHub
-
-See [`docs/GITHUB_UPLOAD.md`](docs/GITHUB_UPLOAD.md) for a step-by-step upload flow.
-
----
 
 ## Notes
 
