@@ -4,13 +4,18 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>DriftCheck — LLM consistency &amp; drift testing</title>
+<link rel="icon" href="/assets/favicon.ico" sizes="any" />
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
+<link rel="icon" type="image/png" sizes="16x16" href="/assets/favicon-16.png" />
+<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png" />
 <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
 
 <nav class="nav">
   <div class="brand">
-    <span class="brand-mark">◈</span>
+    <img class="brand-logo brand-logo-light" src="/assets/logo-mark-light.png" alt="DriftCheck" height="30" />
+    <img class="brand-logo brand-logo-dark" src="/assets/logo-mark-dark.png" alt="DriftCheck" height="30" />
     <span class="brand-name">DriftCheck</span>
     <span class="brand-tag">local</span>
   </div>
@@ -86,8 +91,12 @@
       </div>
 
       <div class="field field-full form-actions">
-        <button class="btn btn-primary" id="runBtn">Run tests</button>
+        <button class="btn btn-primary btn-action" id="runBtn"><span id="runBtnLabel">Run tests</span></button>
+        <button class="btn btn-ghost btn-action" id="evaluateOnlyBtn" type="button" title="Evaluate existing JSON outputs — does not re-call runner models, but may call the configured QSL model judge"><span id="evalBtnLabel">Evaluate</span></button>
         <span id="runNote" class="dim"></span>
+      </div>
+      <div class="field field-full">
+        <span class="field-hint">Evaluate existing outputs reads matching raw result JSON files from <code>outputs/</code> — it does not re-call the runner models that produced them, but it may call the configured <code>evaluation.rag_model</code> as a QSL model judge; QSL still applies hard checks and produces the final verdict.</span>
       </div>
     </div>
   </section>
@@ -101,22 +110,11 @@
         <p class="dim" id="resultsSubtitle">—</p>
       </div>
       <button class="btn btn-ghost" id="downloadAll" type="button" title="Download raw JSON of the last run">Download JSON</button>
+      <button class="btn btn-ghost results-collapse-btn" id="resultsCollapseBtn" type="button" title="Collapse/expand results">▾ Collapse</button>
     </header>
     <div id="resultsBody"></div>
   </section>
 
-  <!-- ==================== HISTORY ==================== -->
-  <section class="card">
-    <header class="card-head">
-      <div>
-        <span class="eyebrow">History</span>
-        <h2>Past runs</h2>
-        <p class="dim">Every result saved under <code>outputs/</code>. Click a row to reload it.</p>
-      </div>
-      <button class="btn btn-ghost" id="refreshHistory" type="button">Refresh</button>
-    </header>
-    <div class="history" id="historyList"><em class="dim">Loading…</em></div>
-  </section>
 
 </main>
 

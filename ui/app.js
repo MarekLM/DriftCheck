@@ -42,6 +42,29 @@
     return json;
   }
 
+  // ------- PROGRESS POLLING -------
+  // Polls GET /api/progress while a run/evaluate is active and updates the
+  // button's label with a live percentage, e.g. "Running…23%". Run and
+  // Evaluate are tracked independently server-side, so both buttons can show
+  // their own live percentage even if both operations are active at once.
+  function startProgressPoll(kind, labelEl, baseLabel) {
+    labelEl.textContent = baseLabel + '…';
+    const iv = setInterval(async () => {
+      try {
+        const snap = await api('/api/progress');
+        const s = snap && snap[kind];
+        if (s && s.active && typeof s.percent === 'number') {
+          labelEl.textContent = `${baseLabel}…${s.percent}%`;
+        }
+      } catch { /* ignore transient polling errors */ }
+    }, 600);
+    return iv;
+  }
+  function stopProgressPoll(iv, labelEl, baseLabel) {
+    clearInterval(iv);
+    labelEl.textContent = baseLabel;
+  }
+
   function toast(msg, cls = 'ok') {
     const t = el('div', `toast ${cls}`, msg);
     document.body.appendChild(t);
@@ -234,33 +257,106 @@
     };
     const total = tests.length * conns.length;
     const btn = $('runBtn');
+    const btnLabel = $('runBtnLabel');
     const note = $('runNote');
     btn.disabled = true;
-    btn.textContent = 'Running…';
     note.textContent = `Running ${tests.length} test(s) × ${conns.length} model(s) = ${total} run(s) × ${overrides.repeats} pass. May take a while.`;
     const t0 = performance.now();
+    let reportLinkSet = false;
+    const progIv = startProgressPoll('run', btnLabel, 'Running');
     try {
       const resp = await api('/api/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tests, connections: conns, overrides }),
       });
-      state.lastResults = { tests, connections: conns, results: resp.results };
+
+      note.textContent = 'Run finished. Evaluating with QSL…';
+      let finalPayload = { tests, connections: conns, results: resp.results };
+      try {
+        const evaluated = await api('/api/evaluate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ results: resp.results }),
+        });
+        finalPayload = { ...evaluated, tests, connections: conns };
+        if (evaluated._markdown_report) {
+          note.innerHTML = `Narrative report saved: <a href="/api/evaluation-report/${encodeURIComponent(evaluated._markdown_report)}" target="_blank" rel="noopener">outputs/evaluation/${evaluated._markdown_report}</a>`;
+          reportLinkSet = true;
+        }
+      } catch (evalErr) {
+        toast(`Run finished, but QSL evaluate failed: ${evalErr.message}`, 'err');
+      }
+
+      state.lastResults = finalPayload;
       renderResults(state.lastResults);
       const dt = ((performance.now() - t0) / 1000).toFixed(1);
-      const nErr = resp.results.reduce((s, r) => s + (r.summary?.n_errors || 0) + (r.error ? 1 : 0), 0);
-      toast(`Done in ${dt}s${nErr ? ` — with ${nErr} error(s)` : ''}.`, nErr ? 'err' : 'ok');
-      loadHistory();
+      const nErr = (state.lastResults.results || []).reduce((s, r) => s + (r.summary?.n_errors || 0) + (r.error ? 1 : 0), 0);
+      toast(`Done + evaluated in ${dt}s${nErr ? ` — with ${nErr} error(s)` : ''}.`, nErr ? 'err' : 'ok');
+      // Results always contain only the latest run.
     } catch (e) {
       toast(`Run failed: ${e.message}`, 'err');
     } finally {
       btn.disabled = false;
-      btn.textContent = 'Run tests';
-      note.textContent = '';
+      stopProgressPoll(progIv, btnLabel, 'Run tests');
+      if (!reportLinkSet) note.textContent = '';
+    }
+  }
+
+  async function onEvaluateOnly() {
+    const tests = selectedTests();
+    const conns = selectedConnections();
+    if (!tests.length) {
+      toast('Pick at least one test to evaluate from outputs/.', 'err');
+      return;
+    }
+    if (!conns.length) {
+      toast('Pick at least one model to evaluate from outputs/.', 'err');
+      return;
+    }
+
+    const evalBtn = $('evaluateOnlyBtn');
+    const evalBtnLabel = $('evalBtnLabel');
+    const note = $('runNote');
+    evalBtn.disabled = true;
+    note.textContent = `Evaluating only the newest timestamped run for ${tests.length} selected test(s) × ${conns.length} selected model(s). No older outputs are included.`;
+    const t0 = performance.now();
+    let reportLinkSet = false;
+    const progIv = startProgressPoll('evaluate', evalBtnLabel, 'Evaluate');
+    try {
+      const evaluated = await api('/api/evaluate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tests, connections: conns, latest_run_only: true }),
+      });
+      state.lastResults = { ...evaluated, tests, connections: conns };
+      renderResults(state.lastResults);
+      const dt = ((performance.now() - t0) / 1000).toFixed(1);
+      toast(`Evaluate finished in ${dt}s · ${evaluated._loaded_results || 0} output file(s) processed.`, 'ok');
+      if (evaluated._markdown_report) {
+        note.innerHTML = `Narrative report saved: <a href="/api/evaluation-report/${encodeURIComponent(evaluated._markdown_report)}" target="_blank" rel="noopener">outputs/evaluation/${evaluated._markdown_report}</a>`;
+        reportLinkSet = true;
+      }
+      // Results always contain only the latest evaluated run.
+    } catch (e) {
+      toast(`Evaluate failed: ${e.message}`, 'err');
+    } finally {
+      evalBtn.disabled = false;
+      stopProgressPoll(progIv, evalBtnLabel, 'Evaluate');
+      if (!reportLinkSet) note.textContent = '';
     }
   }
 
   // ------- RENDER RESULTS -------
+  const EVAL_METRICS = [
+    { key: 'qsl_score',        label: 'QSL score',        hint: 'overall evaluated score' },
+    { key: 'correctness',      label: 'Correctness',      hint: 'matches expected output / criterion' },
+    { key: 'grounding',        label: 'Grounding',        hint: 'stays supported by expected/reference' },
+    { key: 'no_hallucination', label: 'No hallucination', hint: 'higher = fewer unsupported claims' },
+    { key: 'completeness',     label: 'Completeness',     hint: 'covers expected content' },
+    { key: 'format_score',     label: 'Format',           hint: 'format / regex compliance' },
+  ];
+
   const METRICS = [
     { key: 'consistency',            label: 'Consistency',            hint: 'higher = same answer each time' },
     { key: 'criterion_pass_rate',    label: 'Criterion pass rate',    hint: 'regex-based check' },
@@ -277,7 +373,7 @@
     }
   }
 
-  function renderResults(data) {
+  function renderResults(data, opts = {}) {
     const card = $('resultsCard');
     card.hidden = false;
     const body = $('resultsBody');
@@ -293,7 +389,14 @@
     $('resultsTitle').textContent = byTest.size === 1
       ? [...byTest.keys()][0]
       : `${byTest.size} tests`;
-    $('resultsSubtitle').textContent = `${data.results.length} run(s) · ${new Date().toLocaleString()}`;
+    const evalSummary = data.summary
+      ? ` · QSL: ${data.summary.n_pass || 0} pass, ${data.summary.n_partial || 0} partial, ${data.summary.n_drift || 0} drift · evaluator: ${data.summary.rag_model || 'deterministic'} (${data.summary.n_rag_model || 0} model / ${data.summary.n_deterministic || 0} fallback)`
+      : '';
+    const loadedAt = data._loaded_timestamp
+      ? new Date(data._loaded_timestamp * 1000)
+      : (data.summary && data.summary.created_at ? new Date(data.summary.created_at) : new Date());
+    const sourceLabel = data._loaded_from ? ` · ${data._loaded_from}` : '';
+    $('resultsSubtitle').textContent = `${data.results.length} run(s) · ${loadedAt.toLocaleString()}${sourceLabel}${evalSummary}`;
 
     byTest.forEach((rows, testName) => {
       body.appendChild(renderTestGroup(testName, rows));
@@ -309,7 +412,17 @@
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     };
 
-    card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const collapseBtn = $('resultsCollapseBtn');
+    body.hidden = false;
+    collapseBtn.textContent = '▾ Collapse';
+    collapseBtn.onclick = () => {
+      body.hidden = !body.hidden;
+      collapseBtn.textContent = body.hidden ? '▸ Expand' : '▾ Collapse';
+    };
+
+    if (opts.scroll !== false) {
+      card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   }
 
   function renderTestGroup(testName, rows) {
@@ -320,6 +433,19 @@
     head.appendChild(el('span', 'test-group-meta',
       `${rows.length} model(s) · ${nErr ? nErr + ' error(s)' : 'clean run'}`));
     wrap.appendChild(head);
+
+    // QSL evaluation block
+    if (rows.some(r => r.summary && r.summary.qsl_score != null)) {
+      const evalBlock = el('div', 'metric-block');
+      evalBlock.appendChild(el('h4', 'metric-block-title', 'QSL evaluation'));
+      const evalBody = el('div', 'chart-body');
+      renderEvalBarsInto(evalBody, rows);
+      evalBlock.appendChild(evalBody);
+      const recs = el('div', 'recommendations-block');
+      renderRecommendationsInto(recs, rows);
+      evalBlock.appendChild(recs);
+      wrap.appendChild(evalBlock);
+    }
 
     // Bar chart
     const barBlock = el('div', 'metric-block');
@@ -334,23 +460,6 @@
     renderSummaryCardsInto(cardsGrid, rows);
     wrap.appendChild(cardsGrid);
 
-    // Radar (if ≥ 2 models)
-    if (rows.length >= 2) {
-      const radarBlock = el('div', 'metric-block');
-      radarBlock.appendChild(el('h4', 'metric-block-title', 'Radar profile'));
-      const rw = el('div', 'radar-wrap');
-      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-      svg.setAttribute('class', 'radar');
-      svg.setAttribute('viewBox', '0 0 400 400');
-      svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
-      rw.appendChild(svg);
-      radarBlock.appendChild(rw);
-      const legend = el('div', 'chart-legend');
-      radarBlock.appendChild(legend);
-      renderRadarInto(svg, legend, rows);
-      wrap.appendChild(radarBlock);
-    }
-
     // Raw answers
     const answersBlock = el('div', 'metric-block');
     answersBlock.appendChild(el('h4', 'metric-block-title', 'Raw answers'));
@@ -362,12 +471,12 @@
     return wrap;
   }
 
-  function renderBarsInto(body, results) {
-    METRICS.forEach(m => {
+  function renderEvalBarsInto(body, results) {
+    EVAL_METRICS.forEach(m => {
       const grp = el('div', 'metric-group');
       const head = el('div', 'metric-head');
       head.appendChild(el('span', 'metric-name', m.label));
-      head.appendChild(el('span', `metric-hint${m.invert ? ' invert' : ''}`, m.hint));
+      head.appendChild(el('span', 'metric-hint', m.hint));
       grp.appendChild(head);
       results.forEach((r, i) => {
         const row = el('div', 'metric-bar');
@@ -391,6 +500,66 @@
     });
   }
 
+  function renderRecommendationsInto(box, results) {
+    results.forEach(r => {
+      const ev = r.evaluation || {};
+      const s = r.summary || {};
+      const finalVerdict = s.final_verdict || ev.final_verdict || s.verdict || ev.verdict || '—';
+      const metricVerdict = s.deterministic_verdict || ev.deterministic_verdict || '—';
+      const judgeVerdict = s.judge_verdict || ev.judge_verdict || '—';
+      const item = el('div', `recommendation ${String(finalVerdict).toLowerCase()}`);
+      item.appendChild(el('div', 'rec-head', `${r.connection}: ${finalVerdict}`));
+      item.appendChild(el('div', 'rec-context', `metric: ${metricVerdict} · judge: ${judgeVerdict} · evaluator: ${ev.rag_model || ev.evaluator || 'deterministic'}`));
+      item.appendChild(el('div', 'rec-body', ev.recommendation || 'No QSL recommendation available.'));
+      if (ev.metric_issue) {
+        item.appendChild(el('div', 'rec-context', `Metric note: ${ev.metric_issue}`));
+      }
+      if (ev.qsl_context && ev.qsl_context.length) {
+        const ctx = el('div', 'rec-context', `QSL context: ${ev.qsl_context.map(x => x.test + '/' + x.connection).join(', ')}`);
+        item.appendChild(ctx);
+      }
+      box.appendChild(item);
+    });
+  }
+
+  function renderBarsInto(body, results) {
+    METRICS.forEach(m => {
+      // Some metrics only apply to certain tests by design — e.g.
+      // criterion_pass_rate needs a configured `criterion` regex, and
+      // assentation_flip_rate needs `test_assentation: true`. If every
+      // result in this test group has no value for this metric, it isn't
+      // that the models "failed" it — the test simply doesn't measure it.
+      // Skip the whole row instead of showing a confusing blank "—" per model.
+      const anyValue = results.some(r => r.summary && r.summary[m.key] != null);
+      if (!anyValue) return;
+
+      const grp = el('div', 'metric-group');
+      const head = el('div', 'metric-head');
+      head.appendChild(el('span', 'metric-name', m.label));
+      head.appendChild(el('span', `metric-hint${m.invert ? ' invert' : ''}`, m.hint));
+      grp.appendChild(head);
+      results.forEach((r, i) => {
+        const row = el('div', 'metric-bar');
+        row.appendChild(el('span', 'bar-model', r.connection));
+        const track = el('div', 'bar-track');
+        const val = r.summary ? r.summary[m.key] : null;
+        if (val == null) {
+          track.classList.add('na');
+        } else {
+          const fill = el('div', 'bar-fill');
+          fill.style.width = `${Math.round(val * 100)}%`;
+          fill.style.background = providerColor(r.provider);
+          fill.style.animationDelay = `${i * 60}ms`;
+          track.appendChild(fill);
+        }
+        row.appendChild(track);
+        row.appendChild(el('span', 'bar-value', val == null ? 'n/a for this test' : `${(val * 100).toFixed(1)}%`));
+        grp.appendChild(row);
+      });
+      body.appendChild(grp);
+    });
+  }
+
   function renderSummaryCardsInto(box, results) {
     results.forEach(r => {
       const card = el('div', `result-card${r.error ? ' err' : ''}`);
@@ -398,6 +567,23 @@
       card.appendChild(h);
       card.appendChild(el('div', 'rc-model', `${r.provider || '?'}/${r.model || '?'}`));
       const s = r.summary || {};
+      if (s.verdict || r.evaluation) {
+        const finalVerdict = s.final_verdict || s.verdict || r.evaluation?.final_verdict || '—';
+        const verdict = el('div', `verdict ${String(finalVerdict || '').toLowerCase()}`, finalVerdict || '—');
+        card.appendChild(verdict);
+        const metricVerdict = s.deterministic_verdict || r.evaluation?.deterministic_verdict;
+        const judgeVerdict = s.judge_verdict || r.evaluation?.judge_verdict;
+        if (metricVerdict || judgeVerdict) {
+          card.appendChild(el('div', 'rc-model', `metric: ${metricVerdict || '—'} · judge: ${judgeVerdict || '—'}`));
+        }
+      }
+      EVAL_METRICS.forEach(m => {
+        if (s[m.key] == null) return;
+        const line = el('div', 'metric');
+        line.appendChild(el('span', null, m.label));
+        line.appendChild(el('span', null, `${(s[m.key] * 100).toFixed(1)}%`));
+        card.appendChild(line);
+      });
       METRICS.forEach(m => {
         const line = el('div', 'metric');
         line.appendChild(el('span', null, m.label));
@@ -415,64 +601,6 @@
     });
   }
 
-  function renderRadarInto(svg, legend, results) {
-    const NS = 'http://www.w3.org/2000/svg';
-    const cx = 200, cy = 200, R = 130;
-    const g = document.createElementNS(NS, 'g'); g.setAttribute('class', 'radar-grid');
-    [0.25, 0.5, 0.75, 1].forEach(f => {
-      const c = document.createElementNS(NS, 'circle');
-      c.setAttribute('cx', cx); c.setAttribute('cy', cy); c.setAttribute('r', R * f);
-      g.appendChild(c);
-    });
-    svg.appendChild(g);
-    const axg = document.createElementNS(NS, 'g'); axg.setAttribute('class', 'radar-axis-lines');
-    const l1 = document.createElementNS(NS, 'line'); l1.setAttribute('x1', cx); l1.setAttribute('y1', cy - R); l1.setAttribute('x2', cx); l1.setAttribute('y2', cy + R);
-    const l2 = document.createElementNS(NS, 'line'); l2.setAttribute('x1', cx - R); l2.setAttribute('y1', cy); l2.setAttribute('x2', cx + R); l2.setAttribute('y2', cy);
-    axg.appendChild(l1); axg.appendChild(l2);
-    svg.appendChild(axg);
-    const lg = document.createElementNS(NS, 'g'); lg.setAttribute('class', 'radar-axis');
-    function label(x, y, anchor, text){
-      const t = document.createElementNS(NS, 'text');
-      t.setAttribute('x', x); t.setAttribute('y', y);
-      t.setAttribute('text-anchor', anchor); t.textContent = text;
-      lg.appendChild(t);
-    }
-    label(cx, cy - R - 12, 'middle', 'Consistency');
-    label(cx + R + 12, cy + 4, 'start',  'Criterion');
-    label(cx, cy + R + 22, 'middle', '¬ Assentation');
-    label(cx - R - 12, cy + 4, 'end',   'Faithfulness');
-    svg.appendChild(lg);
-    results.forEach((r, i) => {
-      const s = r.summary || {};
-      const cV = s.consistency ?? 0;
-      const kV = s.criterion_pass_rate ?? 0;
-      const aV = s.assentation_flip_rate == null ? 0 : (1 - s.assentation_flip_rate);
-      const fV = s.faithfulness ?? 0;
-      const pts = [
-        [cx,           cy - R * cV],
-        [cx + R * kV,  cy],
-        [cx,           cy + R * aV],
-        [cx - R * fV,  cy],
-      ].map(p => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
-      const poly = document.createElementNS(NS, 'polygon');
-      poly.setAttribute('class', 'radar-poly');
-      poly.setAttribute('points', pts);
-      const c = providerColor(r.provider);
-      poly.style.fill = c; poly.style.stroke = c;
-      poly.style.animation = `radarIn .8s ease both`;
-      poly.style.animationDelay = `${i * 100}ms`;
-      svg.appendChild(poly);
-    });
-    results.forEach(r => {
-      const it = el('span', 'chart-legend-item');
-      const sw = el('span', 'legend-swatch');
-      sw.style.background = providerColor(r.provider);
-      it.appendChild(sw);
-      it.appendChild(el('span', null, r.connection));
-      legend.appendChild(it);
-    });
-  }
-
   function renderAnswersInto(box, results) {
     results.forEach(r => {
       const d = el('details');
@@ -481,6 +609,15 @@
       s.appendChild(el('span', 'dim', `${(r.answers || []).length} answer(s)`));
       d.appendChild(s);
       const body = el('div', 'answer-body');
+      if (r.evaluation && r.evaluation.recommendation) {
+        const parts = [];
+        if (r.evaluation.deterministic_verdict) parts.push(`metric: ${r.evaluation.deterministic_verdict}`);
+        if (r.evaluation.judge_verdict) parts.push(`judge: ${r.evaluation.judge_verdict}`);
+        if (r.evaluation.final_verdict) parts.push(`final: ${r.evaluation.final_verdict}`);
+        const prefix = parts.length ? parts.join(' · ') + ' — ' : '';
+        const rec = el('div', 'eval-note', prefix + r.evaluation.recommendation);
+        body.appendChild(rec);
+      }
       (r.answers || []).forEach((ans, i) => {
         const it = el('div', 'answer-item');
         it.appendChild(el('div', 'answer-idx', `pass #${i + 1}`));
@@ -500,41 +637,71 @@
     });
   }
 
-  // ------- HISTORY -------
-  async function loadHistory() {
-    const box = $('historyList');
-    box.innerHTML = '<em class="dim">Loading…</em>';
+  // ------- LATEST RESULT ONLY -------
+  async function loadLatestResults(opts = {}) {
+    const quiet = opts.quiet !== false;
     try {
-      const items = await api('/api/results');
-      if (!items.length) { box.innerHTML = '<em class="dim">No runs yet. Try running a test above.</em>'; return; }
-      box.innerHTML = '';
-      items.forEach(it => {
-        const row = el('div', 'history-row');
-        row.appendChild(el('span', 'h-time', new Date((it.mtime || 0) * 1000).toLocaleString()));
-        row.appendChild(el('span', 'h-test', it.test || '—'));
-        row.appendChild(el('span', 'h-model', `${it.provider || '?'}/${it.model || '?'}`));
-        const pct = (v) => v == null ? '—' : `${(v * 100).toFixed(0)}%`;
-        row.appendChild(el('span', 'h-metric', pct(it.summary?.consistency)));
-        row.appendChild(el('span', 'h-metric', pct(it.summary?.criterion_pass_rate)));
-        row.appendChild(el('span', 'h-metric', pct(it.summary?.assentation_flip_rate)));
-        row.appendChild(el('span', 'h-metric', pct(it.summary?.faithfulness)));
-        row.appendChild(el('span', 'h-count', `${it.summary?.n_answers ?? 0}/${it.summary?.n_errors ?? 0}`));
-        row.title = 'Click to load this result';
-        row.addEventListener('click', () => loadHistoryEntry(it.file));
-        box.appendChild(row);
-      });
+      const progress = await api('/api/progress').catch(() => null);
+      if (progress && ((progress.run && progress.run.active) || (progress.evaluate && progress.evaluate.active))) {
+        return false;
+      }
+
+      const latest = await api('/api/latest-result');
+      if (latest && Array.isArray(latest.results) && latest.results.length) {
+        state.lastResults = latest;
+        renderResults(state.lastResults, { scroll: opts.scroll === true });
+        return true;
+      }
+      return false;
     } catch (e) {
-      box.innerHTML = `<em class="dim">Failed to load history: ${e.message}</em>`;
+      if (!quiet) toast(`Could not load latest result: ${e.message}`, 'err');
+      return false;
     }
   }
-  async function loadHistoryEntry(file) {
-    try {
-      const one = await api(`/api/results/${encodeURIComponent(file)}`);
-      state.lastResults = { test: one.test, connections: [one.connection], results: [one] };
-      renderResults(state.lastResults);
-    } catch (e) {
-      toast(`Could not load ${file}: ${e.message}`, 'err');
+
+  // If a Run or Evaluate is still active on the server when this page loads
+  // (e.g. it was started, then the tab was closed or reloaded), pick up its
+  // live percentage. When the operation finishes, Results is refreshed from
+  // the newest timestamped output only — older runs are never rendered.
+  async function reconnectToActiveOperations() {
+    let snap;
+    try { snap = await api('/api/progress'); } catch { return false; }
+    const runActive = !!(snap.run && snap.run.active);
+    const evalActive = !!(snap.evaluate && snap.evaluate.active);
+
+    if (runActive) {
+      const btn = $('runBtn'); const label = $('runBtnLabel');
+      btn.disabled = true;
+      const iv = startProgressPoll('run', label, 'Running');
+      $('runNote').textContent = 'Reconnected to a run already in progress…';
+      const check = setInterval(async () => {
+        const s = await api('/api/progress').catch(() => null);
+        if (!s || !s.run.active) {
+          clearInterval(check);
+          btn.disabled = false;
+          stopProgressPoll(iv, label, 'Run tests');
+          $('runNote').textContent = '';
+          loadLatestResults({ quiet: true, scroll: true });
+        }
+      }, 1200);
     }
+
+    if (evalActive) {
+      const btn = $('evaluateOnlyBtn'); const label = $('evalBtnLabel');
+      btn.disabled = true;
+      const iv = startProgressPoll('evaluate', label, 'Evaluate');
+      const check = setInterval(async () => {
+        const s = await api('/api/progress').catch(() => null);
+        if (!s || !s.evaluate.active) {
+          clearInterval(check);
+          btn.disabled = false;
+          stopProgressPoll(iv, label, 'Evaluate');
+          loadLatestResults({ quiet: true, scroll: true });
+        }
+      }, 1200);
+    }
+
+    return runActive || evalActive;
   }
 
   // ------- BOOT -------
@@ -551,21 +718,13 @@
       renderModelList();
       wireModelPicks();
       $('runBtn').addEventListener('click', onRun);
-      $('runBtn').textContent = 'Run tests';
-      $('refreshHistory').addEventListener('click', loadHistory);
-      loadHistory();
+      $('evaluateOnlyBtn').addEventListener('click', onEvaluateOnly);
+      const active = await reconnectToActiveOperations();
+      if (!active) loadLatestResults({ quiet: true, scroll: false });
     } catch (e) {
       status.textContent = 'API error';
       status.classList.add('err');
       toast(`Failed to load config: ${e.message}`, 'err');
     }
   });
-
-  // Small keyframe injected via JS so the radar animation lives in one place
-  const s = document.createElement('style');
-  s.textContent = `
-    @keyframes radarIn { from { opacity:0; transform:scale(.9); transform-origin:center; }
-                         to   { opacity:1; transform:scale(1); } }
-  `;
-  document.head.appendChild(s);
 })();

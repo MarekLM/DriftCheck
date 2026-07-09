@@ -103,4 +103,4 @@ def load_config(path: str | Path) -> dict:
             fanned.pop("connections", None)
             tests_out.append(fanned)
 
-    return {"connections": connections, "defaults": defaults, "tests": tests_out}
+    return {"connections": connections, "defaults": defaults, "evaluation": raw.get("evaluation", {}) or {}, "tests": tests_out}

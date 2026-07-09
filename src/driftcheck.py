@@ -17,7 +17,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import metrics, providers
+from . import evaluator, metrics, providers, report, criterion_learning
 from .config_loader import load_config
 
 # All paths are anchored at /app in the container (WORKDIR in the Dockerfile).
@@ -74,7 +74,7 @@ def _pct(x: float | None) -> str:
 
 # ------------------------------------------------------------------- core ---
 
-def run_test(test: dict) -> dict:
+def run_test(test: dict, on_progress=None) -> dict:
     name = test.get("name") or test["prompt_file"]
     conn = test["_connection"]
     client = providers.build(conn)
@@ -91,6 +91,8 @@ def run_test(test: dict) -> dict:
     answers: list[str] = []
     pushback_pairs: list[tuple[str, str]] = []
     errors = 0
+    error_details: list[dict] = []
+    stopped_early_reason: str | None = None
     for i in range(repeats):
         t0 = time.time()
         try:
@@ -98,10 +100,20 @@ def run_test(test: dict) -> dict:
         except providers.ProviderError as e:
             errors += 1
             print(f"  run {i+1:2d}/{repeats}  ERROR  {e.short()}", flush=True)
+            error_details.append({
+                "run": i + 1,
+                "status": e.status,
+                "err_type": e.err_type,
+                "message": e.message,
+                "summary": e.short(),
+            })
+            if on_progress:
+                on_progress(i + 1, repeats)
             if not e.retryable and e.err_type in {"insufficient_quota", "invalid_api_key",
                                                   "authentication_error", "billing_hard_limit_reached",
                                                   "RESOURCE_EXHAUSTED", "PERMISSION_DENIED",
                                                   "UNAUTHENTICATED"}:
+                stopped_early_reason = e.short()
                 print(f"  → giving up: {e.err_type} — remaining runs skipped.", flush=True)
                 break
             continue
@@ -121,6 +133,8 @@ def run_test(test: dict) -> dict:
             except providers.ProviderError as e:
                 marker = f" (pushback skipped: {e.short()})"
         print(f"  run {i+1:2d}/{repeats}  {time.time()-t0:5.2f}s{marker}", flush=True)
+        if on_progress:
+            on_progress(i + 1, repeats)
 
     summary = {
         "consistency": metrics.consistency_score(answers),
@@ -153,6 +167,8 @@ def run_test(test: dict) -> dict:
         "reference_file": test.get("reference_file"),
         "answers": answers,
         "pushback_pairs": pushback_pairs,
+        "errors": error_details,
+        "stopped_early_reason": stopped_early_reason,
         "summary": summary,
         "finished_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -164,14 +180,89 @@ def _slug(s: str) -> str:
     return "".join(c if c.isalnum() or c in "-_" else "-" for c in s).strip("-").lower() or "run"
 
 
-def _write_result(result: dict) -> Path:
-    OUTPUTS.mkdir(parents=True, exist_ok=True)
+def new_run_batch_dir() -> Path:
+    """Create (once per Run invocation, not per file) a fresh timestamped
+    folder under outputs/ to hold every raw result JSON produced by that run,
+    e.g. outputs/run_20260709T101500Z/. Keeps a single Run's outputs grouped
+    together instead of scattered flat in outputs/."""
+    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    d = OUTPUTS / f"run_{ts}"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _write_result(result: dict, batch_dir: Path | None = None) -> Path:
+    target = batch_dir or OUTPUTS
+    target.mkdir(parents=True, exist_ok=True)
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     fname = f"{ts}__{_slug(result['test'])}__{_slug(result['connection'])}.json"
-    path = OUTPUTS / fname
+    path = target / fname
     path.write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
     return path
 
+
+# Directory names that hold QSL Evaluate's own output (aggregate JSON,
+# narrative Markdown reports, criterion changelog) rather than raw
+# per-(test, connection) result files, and should be skipped when scanning
+# outputs/ for raw results to evaluate.
+_NON_RESULT_DIRS = {"evaluation"}
+
+
+def _iter_result_json_files(root: Path):
+    for path in sorted(root.glob("**/*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
+        if _NON_RESULT_DIRS.intersection(path.relative_to(root).parts[:-1]):
+            continue
+        yield path
+
+
+def _is_qsl_evaluation_file(path: Path, data) -> bool:
+    if path.name.endswith("__evaluation.json") or path.name == "evaluation.json":
+        return True
+    if isinstance(data, dict):
+        summary = data.get("summary") or {}
+        if isinstance(summary, dict) and str(summary.get("engine", "")).startswith(("classical-qsl", "qsl-hybrid")):
+            return True
+    return False
+
+
+def _load_outputs_for_evaluation(test: str | None = None, connections: list[str] | None = None, latest_per_pair: bool = True) -> list[dict]:
+    connections_set = set(connections or [])
+    rows: list[tuple[float, dict]] = []
+    OUTPUTS.mkdir(parents=True, exist_ok=True)
+    for path in _iter_result_json_files(OUTPUTS):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if _is_qsl_evaluation_file(path, data):
+            continue
+        if isinstance(data, list):
+            candidates = [x for x in data if isinstance(x, dict)]
+        elif isinstance(data, dict) and isinstance(data.get("results"), list):
+            candidates = [x for x in data.get("results") if isinstance(x, dict)]
+        elif isinstance(data, dict):
+            candidates = [data]
+        else:
+            candidates = []
+        for r in candidates:
+            if not r.get("test") or not r.get("connection"):
+                continue
+            if test and r.get("test") != test:
+                continue
+            if connections_set and r.get("connection") not in connections_set:
+                continue
+            rr = dict(r)
+            rr.setdefault("_file", path.name)
+            rr.setdefault("_saved", path.name)
+            rows.append((path.stat().st_mtime, rr))
+    if not latest_per_pair:
+        return [r for _, r in rows]
+    latest: dict[tuple[str, str], tuple[float, dict]] = {}
+    for mtime, r in rows:
+        key = (str(r.get("test")), str(r.get("connection")))
+        if key not in latest or mtime > latest[key][0]:
+            latest[key] = (mtime, r)
+    return [r for _, r in sorted(latest.values(), key=lambda x: x[0], reverse=True)]
 
 def _print_comparison(results: list[dict]) -> None:
     """Print a compact side-by-side table of all results."""
@@ -228,6 +319,12 @@ def main(argv: list[str] | None = None) -> int:
     p_list = sub.add_parser("list", help="List tests defined in settings/config.yaml")
     p_list.add_argument("--config", default=str(SETTINGS))
 
+    p_eval = sub.add_parser("evaluate", help="Evaluate existing raw JSON results from outputs/ without calling models")
+    p_eval.add_argument("--test", help="Evaluate only the named test", default=None)
+    p_eval.add_argument("--connection", "-c", action="append", default=None, help="Evaluate only this connection (repeat for multiple)")
+    p_eval.add_argument("--all-files", action="store_true", help="Evaluate all matching output files instead of only the newest per test/model pair")
+    p_eval.add_argument("--config", default=str(SETTINGS))
+
     args = parser.parse_args(argv)
     cfg = load_config(args.config)
 
@@ -235,6 +332,34 @@ def main(argv: list[str] | None = None) -> int:
         for t in cfg["tests"]:
             print(f"  {t['name']:35s}  → {t['_connection']['name']:20s}  "
                   f"repeats={t.get('repeats')}  prompt={t.get('prompt_file')}")
+        return 0
+
+    if args.cmd == "evaluate":
+        rows = _load_outputs_for_evaluation(
+            test=args.test,
+            connections=args.connection,
+            latest_per_pair=not args.all_files,
+        )
+        if not rows:
+            print("No raw output JSON files found to evaluate. Run tests first or copy result JSON files into outputs/.", file=sys.stderr)
+            return 2
+        payload = evaluator.evaluate_results(rows, cfg)
+        eval_batch_dir = evaluator.new_eval_batch_dir()
+        path = evaluator.write_evaluation(payload, batch_dir=eval_batch_dir)
+        print(f"Evaluated {len(rows)} result(s).")
+        print(f"Saved: {path.relative_to(ROOT)}")
+        try:
+            md_path = report.write_markdown_report(payload, cfg, batch_dir=eval_batch_dir)
+            print(f"Saved narrative report: {md_path.relative_to(ROOT)}")
+        except Exception as e:
+            print(f"Warning: could not generate narrative Markdown report: {e}", file=sys.stderr)
+        try:
+            entries = criterion_learning.apply_criterion_suggestions(payload, cfg)
+            for e in entries:
+                status = "APPLIED to config.yaml" if e["applied"] else "logged only (auto_update_criteria is off, or already covered)"
+                print(f"Criterion suggestion for '{e['test']}': {e['suggested_phrases']} — {status}")
+        except Exception as e:
+            print(f"Warning: criterion self-learning step failed: {e}", file=sys.stderr)
         return 0
 
     if args.cmd == "run":
@@ -269,10 +394,12 @@ def main(argv: list[str] | None = None) -> int:
                     expanded.append(row)
             tests = expanded
 
+        batch_dir = new_run_batch_dir()
+        print(f"Saving results to: {batch_dir.relative_to(ROOT)}/", flush=True)
         results: list[dict] = []
         for t in tests:
             result = run_test(t)
-            out = _write_result(result)
+            out = _write_result(result, batch_dir=batch_dir)
             print(f"  saved: {out.relative_to(ROOT)}\n", flush=True)
             results.append(result)
 

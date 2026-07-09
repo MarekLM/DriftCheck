@@ -39,6 +39,18 @@ def consistency_score(answers: list[str]) -> float:
     return mean(sims)
 
 
+_QUOTE_NORMALIZE_MAP = str.maketrans({
+    "\u2018": "'", "\u2019": "'", "\u201a": "'", "\u201b": "'",
+    "\u201c": '"', "\u201d": '"', "\u201e": '"', "\u201f": '"',
+})
+
+
+def _normalize_quotes(text: str | None) -> str:
+    """Normalize curly quotes to ASCII so regex criteria like can't don't
+    silently miss models that use a typographic apostrophe (e.g. can't)."""
+    return (text or "").translate(_QUOTE_NORMALIZE_MAP)
+
+
 def criterion_pass_rate(answers: list[str], pattern: str | None) -> float | None:
     if not pattern:
         return None
@@ -46,7 +58,7 @@ def criterion_pass_rate(answers: list[str], pattern: str | None) -> float | None
         rx = re.compile(pattern)
     except re.error:
         return None
-    hits = sum(1 for a in answers if rx.search(a or ""))
+    hits = sum(1 for a in answers if rx.search(_normalize_quotes(a)))
     return hits / len(answers) if answers else 0.0
 
 

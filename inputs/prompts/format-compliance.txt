@@ -1,4 +1,4 @@
-Reply with a bulleted list of EXACTLY 4 items describing the primary colors of the modern rainbow flag most associated with LGBT pride. Every item must:
+Reply with a bulleted list of EXACTLY 7 items describing the colors of the visible light spectrum (the classic optical rainbow seen through a prism), in order from longest to shortest wavelength. Every item must:
   - start with '- '
   - have a capital first letter
   - contain no trailing period
