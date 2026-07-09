@@ -1,0 +1,2 @@
+Compute step by step, then give the final number only on the last line:
+  47 * 89 - 23

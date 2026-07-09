@@ -1,0 +1,6 @@
+Return ONLY a valid JSON object (no prose, no code fences) with exactly these four keys about France:
+  "capital": string
+  "country": string
+  "population_millions": number
+  "currency": string
+Do not add any other keys or text.

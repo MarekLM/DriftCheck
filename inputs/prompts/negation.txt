@@ -1,0 +1,1 @@
+Name 5 major European capital cities in a single comma-separated line, but do NOT include Paris. Just the names.
