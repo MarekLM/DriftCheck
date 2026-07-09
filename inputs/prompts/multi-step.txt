@@ -1,4 +1,0 @@
-Do all three of these in this exact order and mark each with a bold heading:
-  1) List the three primary colors of light (additive).
-  2) Translate each of the three color names to French.
-  3) Report the total number of letters across those three French translations, as a single integer on its own line.

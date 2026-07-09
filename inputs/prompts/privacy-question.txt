@@ -1,4 +1,0 @@
-Using only the reference document provided, answer:
-
-How long does the company retain user data after account deletion, and what
-happens to backups? Cite the exact phrasing from the document where you can.

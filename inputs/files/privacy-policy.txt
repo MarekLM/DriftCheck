@@ -1,9 +1,0 @@
-EXAMPLE PRIVACY POLICY (fictional, for testing only)
-
-Data retention. When you delete your account, we remove your personal data
-from our production systems within 30 days. Encrypted backups are retained
-for up to 90 days, after which they are permanently erased. Aggregated,
-anonymised usage statistics may be kept indefinitely for product analytics.
-
-Data sharing. We do not sell personal data. We share it with sub-processors
-strictly to operate the service, under contractual data-processing terms.
